@@ -1,0 +1,277 @@
+---
+title: "NYPD Shooting Incident Data Report"
+date: "2024-09-03"
+output:
+  html_document:
+    df_print: paged
+---
+
+### Load Packages
+
+```{r setup, include = TRUE, message = FALSE}
+
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+
+```
+
+### Import Data
+
+The two data sets I will be using for my analysis are "NYPD Shooting Incident Data (Historic)" and "New York City Population by Borough, 1950 - 2040." Both data sets are provided by the City of New York. Below I will import and load each to see what they contain.They will be called `nypd_main` and `nyc_boro_pop` respectively.
+
+```{r message = FALSE}
+
+nypd_main <- read_csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+nyc_boro_pop <- read_csv("https://data.cityofnewyork.us/api/views/xywu-7bv9/rows.csv?accessType=DOWNLOAD")
+
+```
+
+```{r}
+
+nypd_main
+
+```
+
+```{r}
+
+nyc_boro_pop
+
+```
+
+### Clean/Transform NYPD Shooting Incident Data
+
+The two variables I am interested in for this analysis are the borough and the year in which each shooting incident took place. Below I isolate those two variables by creating a new column `Year` referencing the year value from the `OCCUR_DATE` column. I then omit all other columns aside from `BORO` which I rename `Borough.` I name this data set `nypd_tidy`.
+
+```{r}
+
+nypd_tidy <- nypd_main %>% 
+select(-c(INCIDENT_KEY, OCCUR_TIME, LOC_OF_OCCUR_DESC, STATISTICAL_MURDER_FLAG, PERP_AGE_GROUP, PERP_SEX, PERP_RACE, VIC_AGE_GROUP, VIC_SEX, VIC_RACE, PRECINCT, JURISDICTION_CODE, LOC_CLASSFCTN_DESC, LOCATION_DESC, X_COORD_CD, Y_COORD_CD, Lon_Lat, Latitude, Longitude)) %>% 
+  mutate(OCCUR_DATE = mdy(OCCUR_DATE))%>% 
+  mutate(Year = year(OCCUR_DATE)) %>%  
+  select(-OCCUR_DATE) %>% 
+  rename(Borough = BORO) %>% 
+  arrange(Borough,Year)
+
+nypd_tidy
+
+```
+
+### Clean/Transform Borough Population Data
+
+Below I omit all columns other than those providing population data for the years 2000, 2010, and 2020 for each of the five boroughs. I will use these as population estimates for my analysis. I name this data set `nyc_boro_pop_tidy`.
+
+```{r}
+
+nyc_boro_pop_tidy <- nyc_boro_pop[-c(1), ]%>% 
+  select(c(Borough, '2000', '2010', '2020'))
+
+nyc_boro_pop_tidy
+
+```
+
+### Combine the Two Data Sets
+
+Below I create a new column `Population` in the `nypd_tidy` data set based on the population estimates above. I use the 2000 population estimate for years 2000-2009, the 2010 population estimate for years 2010-2019, and the 2020 population estimate for years 2020-2023. I call this data set `nypd_w_pop`.
+
+```{r}
+
+nypd_w_pop <- nypd_tidy %>%
+ mutate(Population = case_when(
+    Borough == "BROOKLYN" & Year >= 2000 & Year <= 2009 ~ 2465326,
+    Borough == "QUEENS" & Year >= 2000 & Year <= 2009 ~ 2229379,
+    Borough == "BRONX" & Year >= 2000 & Year <= 2009 ~ 1332650,
+    Borough == "MANHATTAN" & Year >= 2000 & Year <= 2009 ~ 1537195,
+    Borough == "STATEN ISLAND" & Year >= 2000 & Year <= 2009 ~ 443728,
+    Borough == "BROOKLYN" & Year >= 2010 & Year <= 2019 ~ 2552911,
+    Borough == "QUEENS" & Year >= 2010 & Year <= 2019 ~ 2250002,
+    Borough == "BRONX" & Year >= 2010 & Year <= 2019 ~ 1385108,
+    Borough == "MANHATTAN" & Year >= 2010 & Year <= 2019 ~ 1585873,
+    Borough == "STATEN ISLAND" & Year >= 2010 & Year <= 2019 ~ 468730,
+    Borough == "BROOKLYN" & Year >= 2020 ~ 2648452,
+    Borough == "QUEENS" & Year >= 2020 ~ 2330295,
+    Borough == "BRONX" & Year >= 2020 ~ 1446788,
+    Borough == "MANHATTAN" & Year >= 2020 ~ 1638281,
+    Borough == "STATEN ISLAND" & Year >= 2020 ~ 487155,
+    TRUE ~ NA_real_
+  )) %>% 
+  group_by(Borough, Year)
+
+nypd_w_pop
+
+```
+
+### Questions and Visualizations
+
+**Question 1: What was the total number of shooting incidents each year?**
+
+Below I calculate the total number of shooting incidents in each year and create a line graph showing how that figure changed over time.
+
+```{r}
+
+year_totals <- nypd_w_pop %>% group_by(Year) %>% 
+  summarize(Incidents = n())
+
+year_totals
+
+```
+
+```{r}
+
+ggplot(year_totals, aes(x=Year, y=Incidents)) +
+  geom_line(linewidth = .5, stat="identity") +
+  geom_point(size = 1) +
+  xlab("Year") + ylab("Number of Incidents") +
+  scale_x_continuous(breaks = seq(2006, 2023, by = 1)) +
+  scale_y_continuous(breaks = seq(0, 2100, by = 100)) +
+  ggtitle("Total Number of Shooting Incidents per Year") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  theme_classic()
+
+```
+
+From the above graph we see a downward trend in the total number of shooting incidents for years 2006-2019 until a massive upward swing in 2020. This upward trend appears to peak in 2021 and begin to quickly decrease again through 2023.
+
+**Question 2: What was the total number of shooting incidents in each of the five boroughs between 2006 and 2023?**
+
+Below I calculate the total number of shooting incidents in each of the five boroughs between 2006 and 2023 and visualize the figures using a bar chart. 
+
+```{r}
+
+boro_totals <- nypd_w_pop %>% 
+  group_by(Borough) %>% 
+  summarise(Incidents = n()) %>% 
+  arrange(desc(Incidents))
+
+boro_totals
+
+```
+
+```{r}
+
+ggplot(boro_totals, aes(x=Borough, y=Incidents, fill=Borough)) +
+  geom_bar(stat="identity") +
+  xlab("Borough") + ylab("Number of Incidents") +
+  ggtitle("Total Number of Shooting Incidents by Borough (2006-2023)") +
+  geom_text(aes(label = Incidents), vjust = -0.5, size = 3) +
+  theme_classic() +
+  scale_y_continuous(breaks = seq(0, 12000, by = 1000))
+
+```
+
+Brooklyn experienced the highest number of shooting incidents over the given time period (11,346). It is followed by the Bronx (8,376), Queens (4,271), Manhattan (3,762), and Staten Island (807).
+
+**Question 3: How did the number of shooting incidents in each borough compare between 2006 and 2023?**
+
+Below I calculate the number of shooting incidents per year in each borough and plot the data for each together in a line graph for comparison.
+
+```{r}
+
+nypd_w_pop_2 <- nypd_w_pop %>%
+  group_by(Borough, Year) %>%
+  summarise(Count = n(), .groups = 'drop')
+
+nypd_w_pop_2 %>% 
+  ggplot(aes(x = Year, y = Count, group = Borough, color = Borough)) +
+    geom_line(linewidth = .5) +
+    geom_point(size = 1) +
+    labs(title = "Number of Shooting Incidents Each Year by Borough (2006-2023)", 
+         y = "Number of Incidents") +
+    theme_classic() +
+    theme(axis.text.x = element_text(angle = 90), 
+          legend.position = "bottom", 
+          legend.title = element_blank()) +
+    scale_x_continuous(breaks = seq(2006, 2023, by = 1)) +
+  scale_y_continuous(breaks = seq(0, 1000, by = 100))
+
+```
+
+The number of shooting incidents in each borough appears to trend downward until a significant upswing in 2020 as we also observed previously. Brooklyn generally experienced the highest number of shooting incidents each year with the exception of 2021 and 2023 in which it was overtaken by the Bronx. A similar patter is observed between Queens and Manhattan in which Queens trended higher until 2021 after which Manhattan overtook. Staten Island consistently experienced the lowest number of shooting incidents.
+
+**Question 4: How did the total number of shooting incidents in each borough between 2006 and 2023 compare when accounting for population size?**
+
+Below I create a new column `Per_100K` in which I calculate the total number of shooting incidents in each borough each year per 100,000 residents. I call this new data set `nypd_per_100k`. I then create a bar chart to visualize the total number of shooting incidents in each borough between 2006 and 2023 per 100,000 residents. I also create a line graph including said data for each of the five boroughs to show how the figure changed over time.
+
+```{r}
+
+nypd_per_100k <- nypd_w_pop %>% 
+  select(Borough, Year, Population) %>% 
+  group_by(Borough, Year, Population) %>% 
+  summarise(Incidents = n()) %>% 
+  mutate(Per_100K= (Incidents/Population)*100000)
+
+nypd_per_100k
+
+```
+
+```{r}
+
+nypd_per_pop_sum <- nypd_per_100k %>%
+  group_by(Borough) %>%
+  summarize(Total_Per_100K = sum(Per_100K, na.rm = TRUE))
+
+ggplot(nypd_per_100k, aes(x=factor(Borough, levels = unique(Borough)), y=Per_100K, fill=Borough)) +
+  geom_bar(stat="identity") +
+  geom_text(data=nypd_per_pop_sum, aes(x=Borough, y=Total_Per_100K, label=floor(Total_Per_100K)), 
+            vjust=-0.5, size=3) +
+  xlab("Borough") + ylab("Number of Incidents per 100K") +
+  ggtitle("Total Number of Shooting Incidents by Borough per 100K (2006-2023)") +
+  theme_classic() +
+  scale_y_continuous(breaks = seq(0, 700, by = 100))
+
+```
+
+Accounting for population size, the boroughs do not fall into the same order in terms of total number of shooting incidents for the period as they did with the gross number. The Bronx is now the clear leader (604) followed by Brooklyn (445), Manhattan (236), Queens (188), and Staten Island (173).
+
+```{r}
+
+nypd_per_100k %>% 
+ggplot(aes(x = Year, y = Per_100K, group = Borough, color = Borough)) +
+    geom_line(linewidth = .5) +
+    geom_point(size = 1) +
+    labs(title = "Shooting Incidents by Borough per 100k Residents (2006-2023)", 
+         x = "Year", 
+         y = "Number of Incidents") +
+    theme_classic() +
+    theme(axis.text.x = element_text(angle = 90), 
+          legend.position = "bottom", 
+          legend.title = element_blank()) +
+    scale_x_continuous(breaks = seq(2006, 2023, by = 1)) 
+
+```
+### Modeling
+
+Below I will run a linear regression to predict the number of shooting incidents per 100,000 residents for each borough for 2024-2028 based on the historic data.
+
+```{r}
+
+nypd_per_100k$Borough <- as.factor(nypd_per_100k$Borough)
+
+model <- lm(Per_100K ~ Year + Borough, data = nypd_per_100k)
+
+summary(model)
+
+nypd_pred <- expand.grid(Year = 2024:2028, Borough = levels(nypd_per_100k$Borough))
+
+nypd_pred$Predicted_Per_100K <- predict(model, newdata = nypd_pred)
+
+nypd_pred
+
+combined_data <- bind_rows(nypd_per_100k %>% mutate(Type = "Historical"),nypd_pred %>% mutate(Type = "Predicted"))
+
+ggplot(combined_data, aes(x = Year, y = ifelse(Type == "Historical", Per_100K, Predicted_Per_100K), color = Borough)) +
+  geom_line() +
+  geom_point() +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90)) +
+  geom_vline(xintercept = 2024, linetype = "dashed", color = "black", size = 1) +
+  labs(title = "Historic and Predicted Shooting Incidents per 100K Residents",
+       x = "Year",
+       y = "Number of Incidents per 100k Residents") +
+    scale_x_continuous(breaks = seq(2006, 2028, by = 1))
+
+```
+
+### Conclusion
+
+The number of shooting incidents in New York City was in steady decline until a sharp upswing in 2020 which then peaked in 2021 (2,011 incidents) before again beginning to decline through 2023. Brooklyn experienced the highest overall number of shooting incidents (11,346), but accounting for population size, the Bronx experienced the greatest number (604) per 100,000 residents. Using a linear regression, I predict that the number of shooting incidents per 100k residents in each borough will continue to gradually decrease through 2028. The bias in this analysis should be fairly minimal. I chose to study these variables as there was no missing data and it did not include variables such as race, age, and gender with which bias is more likely. It is however possible there are unreported shootings that took place in each borough that are not included in this data. Shootings involving illegal activity or domestic disputes that were not reported to police could potentially have impacted the final analysis. 
