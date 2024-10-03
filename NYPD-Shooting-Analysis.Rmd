@@ -239,6 +239,7 @@ ggplot(aes(x = Year, y = Per_100K, group = Borough, color = Borough)) +
     scale_x_continuous(breaks = seq(2006, 2023, by = 1)) 
 
 ```
+
 ### Modeling
 
 Below I will run a linear regression to predict the number of shooting incidents per 100,000 residents for each borough for 2024-2028 based on the historic data.
